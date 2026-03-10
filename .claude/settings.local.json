@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd \"C:/Users/alexa/Documents/Programmieren/DiscordBot\" && rm -rf node_modules && npm install)"
+    ]
+  }
+}
