@@ -118,26 +118,34 @@ const fixedGames = {
 // TICKET SHOP
 // =====================
 
-const shop = {
-    1000: "Thema-Ticket-Skinni",
-    2000: "Spooky sagt - Helfer",
-    4000: "Helferticket - Customs",
-    5000: "Tagesmod - 1 Stream",
-    8000: "Modusticket - Modus entscheiden",
-    10000: "Standardbox",
-    20000: "Testmod - 3 Streams",
-    25000: "Ultra Box",
-    50000: "Ultimative Daddy Box",
-    100000: "Skin-Ticket - 800VB",
-    200000: "Stream entscheiden - Ganzen Stream entscheiden",
-    1000000: "Stream beenden - Stream sofort beenden"
-};
-
-// Box-Items: geben eine zufällige Coin-Menge zurück (50:50 mehr oder weniger)
-const boxItems = new Set([10000, 25000, 50000]);
+const shop = [
+    { price: 5000,    name: "Thema-Ticket-Skinni",                  isBox: false },
+    { price: 6000,    name: "Spooky sagt - Helfer",                  isBox: false },
+    { price: 8000,    name: "Helferticket - Customs",                 isBox: false },
+    { price: 12000,   name: "Tagesmod - 1 Stream",                   isBox: false },
+    { price: 10000,   name: "Modusticket - Modus entscheiden",        isBox: false },
+    { price: 10000,   name: "Standardbox",                            isBox: true  },
+    { price: 20000,   name: "Testmod - 3 Streams",                   isBox: false },
+    { price: 25000,   name: "Ultra Box",                              isBox: true  },
+    { price: 50000,   name: "Ultimative Daddy Box",                   isBox: true  },
+    { price: 500000,  name: "Skin-Ticket - 800VB",                   isBox: false },
+    { price: 1000000, name: "Stream beenden - Stream sofort beenden", isBox: false },
+];
 
 client.once('ready', () => {
     console.log(`✅ Online als ${client.user.tag}`);
+});
+
+client.on('error', (err) => {
+    console.error('❌ Discord Client Fehler:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('❌ Unhandled Rejection:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+    console.error('❌ Uncaught Exception:', err);
 });
 
 client.on('messageCreate', async message => {
@@ -184,7 +192,7 @@ client.on('messageCreate', async message => {
     !coins
     !spin
     !shop
-    !buy <Preis>
+    !buy <Nummer>
 
     🎰 Gambling:
     !gamble <Einsatz>
@@ -205,11 +213,93 @@ client.on('messageCreate', async message => {
     !start
     !er <Einsatz> <Tier>
 
+    🛡 Moderation:
+    !ban @User [Grund]
+    !kick @User [Grund]
+    !mute @User [Minuten] [Grund]
+    !unmute @User [Grund]
+
     🛠 Admin (nur Terminal):
     give USERID COINS
     remove USERID COINS
     balance USERID
         `);
+    }
+
+    // =====================
+    // MODERATION
+    // =====================
+
+    const MOD_ROLES = ["mod", "moderator", "admin", "administrator"];
+
+    function hasModerationPermission(member) {
+        return member.permissions.has("ModerateMembers") ||
+               member.roles.cache.some(r => MOD_ROLES.includes(r.name.toLowerCase()));
+    }
+
+    if (cmd === "!ban") {
+        if (!hasModerationPermission(message.member))
+            return message.reply("❌ Du hast keine Berechtigung für diesen Command.");
+
+        const target = message.mentions.members.first();
+        if (!target) return message.reply("❌ Nutzung: `!ban @User [Grund]`");
+
+        const reason = args.slice(2).join(" ") || "Kein Grund angegeben";
+
+        if (!target.bannable)
+            return message.reply("❌ Ich kann diesen User nicht bannen.");
+
+        await target.ban({ reason });
+        return message.reply(`🔨 **${target.user.tag}** wurde gebannt.\n📋 Grund: ${reason}`);
+    }
+
+    if (cmd === "!kick") {
+        if (!hasModerationPermission(message.member))
+            return message.reply("❌ Du hast keine Berechtigung für diesen Command.");
+
+        const target = message.mentions.members.first();
+        if (!target) return message.reply("❌ Nutzung: `!kick @User [Grund]`");
+
+        const reason = args.slice(2).join(" ") || "Kein Grund angegeben";
+
+        if (!target.kickable)
+            return message.reply("❌ Ich kann diesen User nicht kicken.");
+
+        await target.kick(reason);
+        return message.reply(`👢 **${target.user.tag}** wurde gekickt.\n📋 Grund: ${reason}`);
+    }
+
+    if (cmd === "!mute") {
+        if (!hasModerationPermission(message.member))
+            return message.reply("❌ Du hast keine Berechtigung für diesen Command.");
+
+        const target = message.mentions.members.first();
+        if (!target) return message.reply("❌ Nutzung: `!mute @User [Minuten] [Grund]`");
+
+        const minutes = parseInt(args[2]) || 10;
+        const reason = args.slice(3).join(" ") || "Kein Grund angegeben";
+        const duration = minutes * 60 * 1000;
+
+        if (!target.moderatable)
+            return message.reply("❌ Ich kann diesen User nicht muten.");
+
+        await target.timeout(duration, reason);
+        return message.reply(`🔇 **${target.user.tag}** wurde für **${minutes} Minuten** gemutet.\n📋 Grund: ${reason}`);
+    }
+
+    if (cmd === "!unmute") {
+        if (!hasModerationPermission(message.member))
+            return message.reply("❌ Du hast keine Berechtigung für diesen Command.");
+
+        const target = message.mentions.members.first();
+        if (!target) return message.reply("❌ Nutzung: `!unmute @User`");
+
+        if (!target.moderatable)
+            return message.reply("❌ Ich kann diesen User nicht entmuten.");
+
+        const reason = args.slice(2).join(" ") || "Kein Grund angegeben";
+        await target.timeout(null, reason);
+        return message.reply(`🔊 **${target.user.tag}** wurde entmutet.\n📋 Grund: ${reason}`);
     }
 
 // =====================
@@ -389,11 +479,11 @@ if (cmd === "!er" && raceActive) {
     // Shop anzeigen
     if (cmd === "!shop") {
         let text = "🛒 **Ticket Shop**\n\n";
-        for (const price in shop) {
-            const isBox = boxItems.has(Number(price));
-            const desc = isBox ? `${shop[price]} *(🎲 50:50 – Zufällige Coins zurück!)*` : shop[price];
-            text += `${Number(price).toLocaleString()} Coins → ${desc}\n`;
-        }
+        shop.forEach((item, i) => {
+            const desc = item.isBox ? `${item.name} *(🎲 50:50 – Zufällige Coins zurück!)*` : item.name;
+            text += `**#${i + 1}** – ${item.price.toLocaleString()} Coins → ${desc}\n`;
+        });
+        text += "\nKaufen mit: **!buy <Nummer>**";
         return message.reply(text);
     }
 
@@ -404,52 +494,52 @@ if (cmd === "!er" && raceActive) {
 
 if (cmd === "!buy" && bet) {
 
-    if (!shop[bet]) return message.reply("❌ Item existiert nicht!");
+    const itemIndex = bet - 1;
+    const item = shop[itemIndex];
+
+    if (!item) return message.reply(`❌ Item #${bet} existiert nicht! Schau dir den **!shop** an.`);
 
     const balance = await getCoins(message.author.id);
-    if (balance < bet) return message.reply("❌ Nicht genug Coins!");
+    if (balance < item.price) return message.reply(`❌ Nicht genug Coins! Du brauchst ${item.price.toLocaleString()} Coins.`);
 
-    removeCoins(message.author.id, bet);
+    removeCoins(message.author.id, item.price);
 
     // Box-Items: zufällige Coins zurückgeben (50:50 mehr oder weniger)
-    if (boxItems.has(bet)) {
-        const payout = Math.floor(Math.random() * bet * 2);
+    if (item.isBox) {
+        const payout = Math.floor(Math.random() * item.price * 2);
         addCoins(message.author.id, payout);
 
-        const won = payout > bet;
-        const diff = Math.abs(payout - bet);
+        const won = payout > item.price;
+        const diff = Math.abs(payout - item.price);
         const resultText = won
             ? `📈 Mehr! Du bekommst **${payout.toLocaleString()} Coins** zurück! (+${diff.toLocaleString()})`
             : `📉 Weniger... Du bekommst nur **${payout.toLocaleString()} Coins** zurück. (-${diff.toLocaleString()})`;
 
-        message.reply(`🎲 **${shop[bet]}** geöffnet!\n${resultText}`);
+        message.reply(`🎲 **${item.name}** geöffnet!\n${resultText}`);
 
         const feedChannel = message.guild.channels.cache.find(c => c.name === "bot-feed");
         if (feedChannel) {
             feedChannel.send(`
 📢 **Box geöffnet!**
 👤 User: <@${message.author.id}>
-📦 Box: ${shop[bet]}
-💰 Einsatz: ${bet.toLocaleString()} Coins
+📦 Box: ${item.name}
+💰 Einsatz: ${item.price.toLocaleString()} Coins
 ${won ? "📈" : "📉"} Ergebnis: ${payout.toLocaleString()} Coins
             `);
         }
         return;
     }
 
-    message.reply(`✅ Du hast gekauft: **${shop[bet]}**`);
+    message.reply(`✅ Du hast gekauft: **${item.name}**`);
 
-    // Bot-Feed Channel suchen
-    const feedChannel = message.guild.channels.cache.find(
-        channel => channel.name === "bot-feed"
-    );
+    const feedChannel = message.guild.channels.cache.find(c => c.name === "bot-feed");
 
     if (feedChannel) {
         feedChannel.send(`
 📢 **Neuer Kauf!**
 👤 User: <@${message.author.id}>
-🎟️ Item: ${shop[bet]}
-💰 Preis: ${bet.toLocaleString()} Coins
+🎟️ Item: ${item.name}
+💰 Preis: ${item.price.toLocaleString()} Coins
         `);
     }
 }
@@ -457,6 +547,11 @@ ${won ? "📈" : "📉"} Ergebnis: ${payout.toLocaleString()} Coins
 
 
 client.login(process.env.TOKEN);
+
+// =====================
+// WEB API STARTEN
+// =====================
+require('./api')(db, client);
 
 
 
