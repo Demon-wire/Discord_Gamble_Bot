@@ -253,6 +253,38 @@ client.on('messageCreate', async message => {
         return message.reply(`🔨 **${target.user.tag}** wurde gebannt.\n📋 Grund: ${reason}`);
     }
 
+    if (cmd === "!ban_role") {
+        if (!hasModerationPermission(message.member))
+            return message.reply("❌ Du hast keine Berechtigung für diesen Command.");
+
+        const roleName = args.slice(1).join(" ");
+        if (!roleName) return message.reply("❌ Nutzung: `!ban_role <Rollenname>`");
+
+        const role = message.guild.roles.cache.find(r => r.name.toLowerCase() === roleName.toLowerCase());
+        if (!role) return message.reply(`❌ Rolle **${roleName}** nicht gefunden.`);
+
+        const members = await message.guild.members.fetch();
+        const targets = members.filter(m => m.roles.cache.has(role.id) && m.bannable);
+
+        if (targets.size === 0)
+            return message.reply(`❌ Keine bannbaren User mit der Rolle **${role.name}** gefunden.`);
+
+        const statusMsg = await message.reply(`⏳ Banne ${targets.size} User mit Rolle **${role.name}**...`);
+
+        let success = 0;
+        let failed = 0;
+        for (const [, member] of targets) {
+            try {
+                await member.ban({ reason: `!ban_role: Rolle ${role.name} — ausgeführt von ${message.author.tag}` });
+                success++;
+            } catch {
+                failed++;
+            }
+        }
+
+        return statusMsg.edit(`✅ Fertig! **${success}** User gebannt, **${failed}** fehlgeschlagen.\n🎭 Rolle: **${role.name}**`);
+    }
+
     if (cmd === "!kick") {
         if (!hasModerationPermission(message.member))
             return message.reply("❌ Du hast keine Berechtigung für diesen Command.");
