@@ -1,6 +1,10 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits } = require('discord.js');
+const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, StreamType } = require('@discordjs/voice');
+const playdl = require('play-dl');
+process.env.FFMPEG_PATH = require('ffmpeg-static');
 const sqlite3 = require('sqlite3').verbose();
+
 
 // =====================
 // EMOJI RENNEN
@@ -32,7 +36,8 @@ const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildVoiceStates
     ]
 });
 
@@ -134,10 +139,36 @@ const shop = [
 
 client.once('ready', () => {
     console.log(`✅ Online als ${client.user.tag}`);
+
+    const channel = client.channels.cache.get('1436073481035841690');
+    if (channel) {
+        joinVoiceChannel({
+            channelId: channel.id,
+            guildId: channel.guild.id,
+            adapterCreator: channel.guild.voiceAdapterCreator,
+        });
+        console.log(`🎙️ Verbunden mit Voice Channel: ${channel.name}`);
+    } else {
+        console.error('❌ Voice Channel nicht gefunden');
+    }
 });
 
 client.on('error', (err) => {
     console.error('❌ Discord Client Fehler:', err);
+});
+
+client.on('voiceStateUpdate', (oldState, newState) => {
+    if (oldState.member.id === client.user.id && oldState.channelId === '1436073481035841690' && !newState.channelId) {
+        const channel = client.channels.cache.get('1436073481035841690');
+        if (channel) {
+            joinVoiceChannel({
+                channelId: channel.id,
+                guildId: channel.guild.id,
+                adapterCreator: channel.guild.voiceAdapterCreator,
+            });
+            console.log('🎙️ Wieder verbunden nach Kick');
+        }
+    }
 });
 
 process.on('unhandledRejection', (reason, promise) => {
@@ -575,6 +606,77 @@ ${won ? "📈" : "📉"} Ergebnis: ${payout.toLocaleString()} Coins
         `);
     }
 }
+
+    if (cmd === '!play') {
+        const voiceChannel = message.member?.voice?.channel;
+        if (!voiceChannel) return message.reply('❌ Du musst in einem Voice Channel sein!');
+        if (!args[1]) return message.reply('❌ Benutzung: `!play lofi` oder `!play <youtube-url>`');
+
+        const connection = joinVoiceChannel({
+            channelId: voiceChannel.id,
+            guildId: voiceChannel.guild.id,
+            adapterCreator: voiceChannel.guild.voiceAdapterCreator,
+            selfMute: false,
+            selfDeaf: false,
+        });
+
+        const { spawn } = require('child_process');
+        const ffmpegPath = require('ffmpeg-static');
+
+        let inputUrl;
+        if (args[1].toLowerCase() === 'lofi') {
+            inputUrl = 'https://streams.ilovemusic.de/iloveradio17.mp3';
+        } else {
+            // YouTube URL — yt-dlp holt die echte Audio-URL
+            const ytdlp = spawn('/opt/homebrew/bin/yt-dlp', ['-f', 'bestaudio', '-g', args[1]]);
+            let url = '';
+            ytdlp.stdout.on('data', d => url += d.toString().trim());
+            ytdlp.on('close', () => {
+                if (!url) return message.reply('❌ Konnte Video nicht laden.');
+                const proc = spawn(ffmpegPath, [
+                    '-re', '-i', url, '-vn',
+                    '-af', 'volume=0.4',
+                    '-acodec', 'libopus', '-b:a', '128k',
+                    '-f', 'ogg', '-ar', '48000', '-ac', '2', 'pipe:1'
+                ]);
+                const resource = createAudioResource(proc.stdout, { inputType: StreamType.OggOpus });
+                const player = createAudioPlayer();
+                player.play(resource);
+                connection.subscribe(player);
+                player.on(AudioPlayerStatus.Idle, () => player.stop());
+                message.reply(`▶️ Spielt jetzt: ${args[1]}`);
+            });
+            return;
+        }
+
+        const proc = spawn(ffmpegPath, [
+            '-re', '-i', inputUrl, '-vn',
+            '-af', 'volume=0.4',
+            '-acodec', 'libopus', '-b:a', '128k',
+            '-f', 'ogg', '-ar', '48000', '-ac', '2', 'pipe:1'
+        ]);
+        const resource = createAudioResource(proc.stdout, { inputType: StreamType.OggOpus });
+        const player = createAudioPlayer();
+        player.play(resource);
+        connection.subscribe(player);
+        player.on(AudioPlayerStatus.Idle, () => player.stop());
+        message.reply('🎵 Lofi läuft!');
+    }
+
+    if (cmd === '!stop') {
+        const voiceChannel = message.member?.voice?.channel;
+        if (!voiceChannel) return message.reply('❌ Du musst in einem Voice Channel sein!');
+
+        const connection = joinVoiceChannel({
+            channelId: voiceChannel.id,
+            guildId: voiceChannel.guild.id,
+            adapterCreator: voiceChannel.guild.voiceAdapterCreator,
+            selfMute: false,
+            selfDeaf: false,
+        });
+        connection.destroy();
+        message.reply('⏹️ Musik gestoppt!');
+    }
 });
 
 
